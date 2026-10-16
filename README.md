@@ -44,6 +44,11 @@ Notes:
   FATFS long filenames, LVGL fonts 12/16/20/28/48, LVGL heap 128 KB.
 - The Waveshare reference examples live outside this repo; their root is in `.env`
   (`EXAMPLE_PATH`), e.g. `11_FactoryProgram`, `03_I2C_SHTC3`, `13_FT6336_Test`.
+- RTC auto-set: every build stamps the host's local time into `build_time.h`; on the first
+  boot of a new build the RTC is set to it (plus `RTC_SYNC_OFFSET_S`). Later reboots keep
+  the RTC (applied build id is stored in NVS). Configure `RTC_SYNC` / `RTC_SYNC_OFFSET_S`
+  in `.env` (see [`.env.example`](.env.example)). `idf.py flash` rebuilds, so a flash
+  right after the build gives a clock within a few seconds.
 
 ---
 

@@ -12,6 +12,10 @@
 #include "esp_log.h"
 #include "esp_err.h"
 #include "esp_heap_caps.h"
+#include "nvs.h"
+#include "rtc_bsp.h"
+#include "build_time.h"
+#include <time.h>
 
 static const char *TAG = "main";
 static SemaphoreHandle_t lvgl_mux = NULL;
@@ -25,6 +29,7 @@ static bool s_need_full = true;
 static bool lvgl_lock(int timeout_ms);
 static void lvgl_unlock(void);
 static void lvgl_port_task(void *arg);
+static void rtc_sync_from_build(void);
 
 static void lvgl_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *color_p)
 {
@@ -68,6 +73,7 @@ extern "C" void app_main(void)
 {
     ESP_LOGI(TAG, "app_main start");
     user_app_init();
+    rtc_sync_from_build();
 
     lv_init();
     lv_display_t *disp = lv_display_create(EPD_WIDTH, EPD_HEIGHT);
@@ -127,4 +133,54 @@ static void lvgl_port_task(void *arg)
         }
         vTaskDelay(wait);
     }
+}
+
+/* Set the RTC once per newly built firmware; the applied build id is kept in NVS */
+static void rtc_sync_from_build(void)
+{
+#if BUILD_RTC_SYNC
+    if (!rtc_ok()) {
+        ESP_LOGW(TAG, "RTC not available, skip build-time sync");
+        return;
+    }
+    nvs_handle_t h;
+    esp_err_t err = nvs_open("sys", NVS_READWRITE, &h);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "nvs_open failed: %s", esp_err_to_name(err));
+        return;
+    }
+    uint32_t last = 0;
+    nvs_get_u32(h, "build_id", &last);
+    if (last != BUILD_TIME_ID) {
+        struct tm tmv = {};
+        tmv.tm_year = BUILD_TIME_YEAR - 1900;
+        tmv.tm_mon = BUILD_TIME_MONTH - 1;
+        tmv.tm_mday = BUILD_TIME_DAY;
+        tmv.tm_hour = BUILD_TIME_HOUR;
+        tmv.tm_min = BUILD_TIME_MIN;
+        tmv.tm_sec = BUILD_TIME_SEC + BUILD_RTC_SYNC_OFFSET_S;
+        mktime(&tmv);
+
+        rtc_datetime_t t = {};
+        t.year = (uint16_t)(tmv.tm_year + 1900);
+        t.month = (uint8_t)(tmv.tm_mon + 1);
+        t.day = (uint8_t)tmv.tm_mday;
+        t.dotw = (uint8_t)tmv.tm_wday;
+        t.hour = (uint8_t)tmv.tm_hour;
+        t.min = (uint8_t)tmv.tm_min;
+        t.sec = (uint8_t)tmv.tm_sec;
+        rtc_set(&t);
+
+        err = nvs_set_u32(h, "build_id", BUILD_TIME_ID);
+        if (err == ESP_OK) {
+            err = nvs_commit(h);
+        }
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "nvs build_id save failed: %s", esp_err_to_name(err));
+        }
+        ESP_LOGI(TAG, "RTC set from build time %04u-%02u-%02u %02u:%02u:%02u",
+                 t.year, t.month, t.day, t.hour, t.min, t.sec);
+    }
+    nvs_close(h);
+#endif
 }
