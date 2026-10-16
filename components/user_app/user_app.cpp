@@ -35,6 +35,7 @@ static esp_pm_lock_handle_t s_audio_pm = nullptr;
 
 #define REC_CHUNK 8192
 #define PLAY_CHUNK 4096
+#define BATT_HYSTERESIS 1
 
 /* recording state */
 static FILE *s_rec_file;
@@ -413,6 +414,7 @@ static void sensor_task(void *arg)
 {
     int last_min = -1;
     int tick = 0;
+    uint8_t batt_stable = battery_level();
     for (;;) {
         rtc_datetime_t t = {};
         rtc_get(&t);
@@ -424,12 +426,17 @@ static void sensor_task(void *arg)
             sen_ok = sensor_read(&temp, &hum);
         }
         uint8_t batt = battery_level();
+        if (batt > batt_stable && batt - batt_stable > BATT_HYSTERESIS) {
+            batt_stable = batt;
+        } else if (batt < batt_stable && batt_stable - batt > BATT_HYSTERESIS) {
+            batt_stable = batt;
+        }
         bool sd_ok = storage_mounted();
 
         app_snapshot_t cur;
         app_state_read(&cur);
         bool changed = minute_changed
-            || cur.battery != batt
+            || cur.battery != batt_stable
             || cur.sd_ok != sd_ok
             || (minute_changed && (cur.sensor_ok != sen_ok || cur.temp_c != temp || cur.humidity != hum));
 
@@ -454,7 +461,7 @@ static void sensor_task(void *arg)
                     s->humidity = hum;
                 }
             }
-            s->battery = batt;
+            s->battery = batt_stable;
             s->sd_ok = sd_ok;
             app_state_commit();
         }

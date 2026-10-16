@@ -7,6 +7,7 @@ static adc_oneshot_unit_handle_t s_adc = nullptr;
 static adc_cali_handle_t s_cali = nullptr;
 
 #define VBAT_ADC_CHANNEL ADC_CHANNEL_3
+#define VBAT_SAMPLES 16
 
 void battery_init(void)
 {
@@ -28,12 +29,16 @@ void battery_init(void)
 
 float battery_voltage(void)
 {
-    int raw = 0;
-    int mv = 0;
-    if (adc_oneshot_read(s_adc, VBAT_ADC_CHANNEL, &raw) != ESP_OK) {
-        return 0.0f;
+    int32_t acc = 0;
+    for (int i = 0; i < VBAT_SAMPLES; i++) {
+        int raw = 0;
+        if (adc_oneshot_read(s_adc, VBAT_ADC_CHANNEL, &raw) != ESP_OK) {
+            return 0.0f;
+        }
+        acc += raw;
     }
-    if (adc_cali_raw_to_voltage(s_cali, raw, &mv) != ESP_OK) {
+    int mv = 0;
+    if (adc_cali_raw_to_voltage(s_cali, (int)(acc / VBAT_SAMPLES), &mv) != ESP_OK) {
         return 0.0f;
     }
     return 0.001f * mv * 2.0f;
