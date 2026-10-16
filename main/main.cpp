@@ -60,6 +60,7 @@ static void increase_lvgl_tick(void *arg)
 
 extern "C" void app_main(void)
 {
+    ESP_LOGI(TAG, "app_main start");
     user_app_init();
 
     lv_init();
@@ -114,6 +115,10 @@ static void lvgl_port_task(void *arg)
         } else if (task_delay_ms < EXAMPLE_LVGL_TASK_MIN_DELAY_MS) {
             task_delay_ms = EXAMPLE_LVGL_TASK_MIN_DELAY_MS;
         }
-        vTaskDelay(pdMS_TO_TICKS(task_delay_ms));
+        TickType_t wait = pdMS_TO_TICKS(task_delay_ms);
+        if (wait == 0) {
+            wait = 1;
+        }
+        vTaskDelay(wait);
     }
 }

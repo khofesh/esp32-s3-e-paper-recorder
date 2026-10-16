@@ -66,6 +66,9 @@ epaper_driver_display::epaper_driver_display(int width, int height,custom_lcd_sp
 
     buffer = (uint8_t *)heap_caps_malloc(lcd_spi_data.buffer_len, MALLOC_CAP_SPIRAM);
 	assert(buffer);
+    old_buffer = (uint8_t *)heap_caps_malloc(lcd_spi_data.buffer_len, MALLOC_CAP_SPIRAM);
+	assert(old_buffer);
+    memset(old_buffer, 0xff, lcd_spi_data.buffer_len);
 }
 
 epaper_driver_display::~epaper_driver_display() {
@@ -120,9 +123,15 @@ void epaper_driver_display::spi_port_init() {
 
 void epaper_driver_display::read_busy() {
     int busy = lcd_spi_data.busy;
+    int guard = 0;
     while(gpio_get_level((gpio_num_t)busy) == 1) 
 	{
-        vTaskDelay(pdMS_TO_TICKS(5));   //LOW: idle, HIGH: busy
+        vTaskDelay(1);   //LOW: idle, HIGH: busy; yield >= 1 tick so the idle task can run
+        if (++guard > 2000)    // ~20 s safety net
+        {
+            ESP_LOGW(TAG, "EPD busy timeout");
+            break;
+        }
     }
 }
 
@@ -282,6 +291,7 @@ void epaper_driver_display::EPD_Display() {
     assert(buffer);
     writeBytes(buffer,buffer_len);
     EPD_TurnOnDisplay();
+    memcpy(old_buffer, buffer, buffer_len);
 }
 
 void epaper_driver_display::EPD_DisplayPartBaseImage() {
@@ -292,6 +302,7 @@ void epaper_driver_display::EPD_DisplayPartBaseImage() {
     EPD_SendCommand(0x26);
     writeBytes(buffer,buffer_len);
     EPD_TurnOnDisplay();
+    memcpy(old_buffer, buffer, buffer_len);
 }
 
 void epaper_driver_display::EPD_Init_Partial() {
@@ -328,10 +339,14 @@ void epaper_driver_display::EPD_Init_Partial() {
 }
 
 void epaper_driver_display::EPD_DisplayPart() {
+    int buffer_len = lcd_spi_data.buffer_len;
     EPD_SendCommand(0x24);
     assert(buffer);
-    writeBytes(buffer,5000);
+    writeBytes(buffer, buffer_len);
+    EPD_SendCommand(0x26);
+    writeBytes(old_buffer, buffer_len);
     EPD_TurnOnDisplayPart();
+    memcpy(old_buffer, buffer, buffer_len);
 }
 
 void epaper_driver_display::EPD_DrawColorPixel(uint16_t x, uint16_t y,uint8_t color) {

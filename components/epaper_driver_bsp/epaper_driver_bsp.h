@@ -29,6 +29,7 @@ private:
     const int Height;
     spi_device_handle_t spi;
     uint8_t *buffer = NULL;
+    uint8_t *old_buffer = NULL;
 
     void spi_gpio_init();
     void spi_port_init();

@@ -6,6 +6,8 @@ sdkconfig.old
 
 managed_components/
 
+.opencode/
+
 #############################################
 # Custom - Add your project specific ignores
 #############################################

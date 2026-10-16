@@ -13,6 +13,11 @@ static i2c_master_dev_handle_t s_dev = nullptr;
 static int s_x_max = 200;
 static int s_y_max = 200;
 
+static int reg_read(uint8_t reg, uint8_t *buf, size_t len)
+{
+    return i2c_master_transmit_receive(s_dev, &reg, 1, buf, len, 1000);
+}
+
 void touch_init(I2cMasterBus *bus, int reset_pin, int x_max, int y_max)
 {
     s_x_max = x_max;
@@ -32,22 +37,35 @@ void touch_init(I2cMasterBus *bus, int reset_pin, int x_max, int y_max)
     vTaskDelay(pdMS_TO_TICKS(100));
     gpio_set_level((gpio_num_t)reset_pin, 1);
     vTaskDelay(pdMS_TO_TICKS(100));
+
+    gpio_config_t int_cfg = {};
+    int_cfg.intr_type = GPIO_INTR_DISABLE;
+    int_cfg.mode = GPIO_MODE_INPUT;
+    int_cfg.pin_bit_mask = (1ULL << EPD_TP_INT_PIN);
+    int_cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    int_cfg.pull_up_en = GPIO_PULLUP_ENABLE;
+    ESP_ERROR_CHECK(gpio_config(&int_cfg));
+
+    int probe = i2c_master_probe(bus->handle(), I2C_FT6336_DEV_Address, 200);
+    ESP_LOGI(TAG, "FT6336 probe=%s", esp_err_to_name(probe));
     ESP_LOGI(TAG, "FT6336 ready");
 }
 
 bool touch_read_point(uint16_t *x, uint16_t *y)
 {
-    uint8_t reg = 0x02;
+    static uint32_t err_count;
     uint8_t touched = 0;
-    if (i2c_master_transmit_receive(s_dev, &reg, 1, &touched, 1, pdMS_TO_TICKS(50)) != ESP_OK) {
+    if (reg_read(0x02, &touched, 1) != ESP_OK) {
+        if (err_count++ < 5) {
+            ESP_LOGW(TAG, "TD_STATUS read failed");
+        }
         return false;
     }
     if (!touched) {
         return false;
     }
     uint8_t buf[4] = {0};
-    reg = 0x03;
-    if (i2c_master_transmit_receive(s_dev, &reg, 1, buf, 4, pdMS_TO_TICKS(50)) != ESP_OK) {
+    if (reg_read(0x03, buf, 4) != ESP_OK) {
         return false;
     }
     *x = (((uint16_t)buf[0] & 0x0f) << 8) | buf[1];

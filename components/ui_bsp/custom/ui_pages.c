@@ -10,6 +10,7 @@
 
 #include "lvgl.h"
 #include "esp_vfs_fat.h"
+#include "esp_log.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -82,6 +83,15 @@ static lv_obj_t *make_label(lv_obj_t *parent, const lv_font_t *font, lv_color_t 
     lv_obj_set_style_text_font(l, font, 0);
     lv_obj_set_style_text_color(l, color, 0);
     return l;
+}
+
+/* Avoid LVGL's free+malloc churn when the text has not changed. */
+static void ui_set_text(lv_obj_t *obj, const char *text)
+{
+    const char *cur = lv_label_get_text(obj);
+    if (cur == NULL || strcmp(cur, text) != 0) {
+        lv_label_set_text(obj, text);
+    }
 }
 
 static lv_obj_t *make_button(lv_obj_t *parent, const lv_font_t *font)
@@ -187,14 +197,14 @@ static void refresh_home(void)
     } else {
         snprintf(buf, sizeof(buf), "--:--");
     }
-    lv_label_set_text(s_home_time, buf);
+    ui_set_text(s_home_time, buf);
 
     if (s.home_valid) {
         snprintf(buf, sizeof(buf), "%04d-%02d-%02d", s.year, s.month, s.day);
     } else {
         snprintf(buf, sizeof(buf), "no time");
     }
-    lv_label_set_text(s_home_date, buf);
+    ui_set_text(s_home_date, buf);
 
     if (s.sensor_ok) {
         float t = s.temp_c + cfg->temp_offset;
@@ -205,10 +215,10 @@ static void refresh_home(void)
     } else {
         snprintf(buf, sizeof(buf), "--");
     }
-    lv_label_set_text(s_home_temp, buf);
+    ui_set_text(s_home_temp, buf);
 
     snprintf(buf, sizeof(buf), "%d%%", (int)s.battery);
-    lv_label_set_text(s_home_batt, buf);
+    ui_set_text(s_home_batt, buf);
 }
 
 /* ---------------- record ---------------- */
@@ -228,14 +238,14 @@ static void refresh_record(void)
     bool rec = (s.state == APP_RECORDING);
     set_rec_symbol(rec);
     if (rec) {
-        lv_label_set_text(s_rec_status, "REC");
-        lv_label_set_text(s_rec_name, s.rec_name);
+        ui_set_text(s_rec_status, "REC");
+        ui_set_text(s_rec_name, s.rec_name);
     } else if (s.state == APP_PLAYING) {
-        lv_label_set_text(s_rec_status, "Playing");
-        lv_label_set_text(s_rec_name, "");
+        ui_set_text(s_rec_status, "Playing");
+        ui_set_text(s_rec_name, "");
     } else {
-        lv_label_set_text(s_rec_status, s.status);
-        lv_label_set_text(s_rec_name, "");
+        ui_set_text(s_rec_status, s.status);
+        ui_set_text(s_rec_name, "");
     }
 }
 
@@ -274,21 +284,21 @@ static void render_files(void)
     if (pages == 0) pages = 1;
     char buf[32];
     snprintf(buf, sizeof(buf), "Files  %d/%d", s_files_page + 1, pages);
-    lv_label_set_text(s_files_header, buf);
+    ui_set_text(s_files_header, buf);
 
     for (int i = 0; i < FILES_ROWS; i++) {
         int fi = s_files_page * FILES_ROWS + i;
         if (fi < s_files_count) {
             storage_file_t *f = &s_files[fi];
             lv_obj_remove_flag(s_row[i], LV_OBJ_FLAG_HIDDEN);
-            lv_label_set_text(s_row_name[i], f->name);
+            ui_set_text(s_row_name[i], f->name);
             if (f->size >= 1024 * 1024) {
                 snprintf(buf, sizeof(buf), "%d.%dM", (int)(f->size / (1024 * 1024)),
                          (int)((f->size / (1024 * 102)) % 10));
             } else {
                 snprintf(buf, sizeof(buf), "%dK", (int)(f->size / 1024));
             }
-            lv_label_set_text(s_row_size[i], buf);
+            ui_set_text(s_row_size[i], buf);
             lv_obj_set_user_data(s_row[i], (void *)(intptr_t)fi);
         } else {
             lv_obj_add_flag(s_row[i], LV_OBJ_FLAG_HIDDEN);
@@ -303,7 +313,7 @@ static void file_row_clicked(lv_event_t *e)
         return;
     }
     snprintf(s_player_path, sizeof(s_player_path), "%s/%s", SD_MOUNT_POINT, s_files[fi].name);
-    lv_label_set_text(s_player_title, s_files[fi].name);
+    ui_set_text(s_player_title, s_files[fi].name);
 
     uint32_t data_bytes = 0, rate = 0;
     uint16_t ch = 0, bits = 0;
@@ -317,8 +327,8 @@ static void file_row_clicked(lv_event_t *e)
     } else {
         snprintf(info, sizeof(info), "Unsupported");
     }
-    lv_label_set_text(s_player_info, info);
-    lv_label_set_text(s_player_btn_txt, LV_SYMBOL_PLAY);
+    ui_set_text(s_player_info, info);
+    ui_set_text(s_player_btn_txt, LV_SYMBOL_PLAY);
 
     lv_obj_add_flag(s_files_list, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(s_player, LV_OBJ_FLAG_HIDDEN);
@@ -373,7 +383,7 @@ static void files_down_clicked(lv_event_t *e)
 static void refresh_player(void)
 {
     bool playing = (app_state_state() == APP_PLAYING);
-    lv_label_set_text(s_player_btn_txt, playing ? LV_SYMBOL_STOP : LV_SYMBOL_PLAY);
+    ui_set_text(s_player_btn_txt, playing ? LV_SYMBOL_STOP : LV_SYMBOL_PLAY);
 }
 
 /* ---------------- settings ---------------- */
@@ -444,8 +454,8 @@ static void refresh_settings(void)
             lv_obj_remove_flag(s_set_row[r], LV_OBJ_FLAG_HIDDEN);
             lv_obj_set_user_data(s_set_row[r], (void *)(intptr_t)i);
             lv_obj_t *name = lv_obj_get_child(s_set_row[r], 0);
-            lv_label_set_text(name, s_si_name[i]);
-            lv_label_set_text(s_set_val[r], si_readonly(i) ? buf : buf);
+            ui_set_text(name, s_si_name[i]);
+            ui_set_text(s_set_val[r], si_readonly(i) ? buf : buf);
             if (si_readonly(i)) {
                 lv_obj_set_style_text_color(s_set_val[r], lv_color_hex(0x404040), 0);
             } else {
@@ -552,7 +562,7 @@ static void time_adjust(int dir)
 static void editor_show(int i)
 {
     lv_obj_set_user_data(s_set_editor, (void *)(intptr_t)i);
-    lv_label_set_text(s_set_ed_title, s_si_name[i]);
+    ui_set_text(s_set_ed_title, s_si_name[i]);
     if (i == SI_TIME) {
         rtc_get(&s_time_edit);
         if (!rtc_ok() || s_time_edit.year < 2024) {
@@ -565,11 +575,11 @@ static void editor_show(int i)
         s_time_field = 0;
         char buf[32];
         time_field_label(buf, sizeof(buf));
-        lv_label_set_text(s_set_ed_value, buf);
+        ui_set_text(s_set_ed_value, buf);
     } else {
         char buf[48];
         si_value(i, buf, sizeof(buf));
-        lv_label_set_text(s_set_ed_value, buf);
+        ui_set_text(s_set_ed_value, buf);
     }
     lv_obj_set_user_data(s_set_ed_title, (void *)(intptr_t)i);
     lv_obj_add_flag(s_set_list, LV_OBJ_FLAG_HIDDEN);
@@ -600,12 +610,12 @@ static void editor_minus(lv_event_t *e)
         time_adjust(-1);
         char buf[32];
         time_field_label(buf, sizeof(buf));
-        lv_label_set_text(s_set_ed_value, buf);
+        ui_set_text(s_set_ed_value, buf);
     } else {
         si_adjust(i, -1);
         char buf[48];
         si_value(i, buf, sizeof(buf));
-        lv_label_set_text(s_set_ed_value, buf);
+        ui_set_text(s_set_ed_value, buf);
     }
 }
 
@@ -617,12 +627,12 @@ static void editor_plus(lv_event_t *e)
         time_adjust(1);
         char buf[32];
         time_field_label(buf, sizeof(buf));
-        lv_label_set_text(s_set_ed_value, buf);
+        ui_set_text(s_set_ed_value, buf);
     } else {
         si_adjust(i, 1);
         char buf[48];
         si_value(i, buf, sizeof(buf));
-        lv_label_set_text(s_set_ed_value, buf);
+        ui_set_text(s_set_ed_value, buf);
     }
 }
 
@@ -635,7 +645,7 @@ static void editor_ok(lv_event_t *e)
             s_time_field++;
             char buf[32];
             time_field_label(buf, sizeof(buf));
-            lv_label_set_text(s_set_ed_value, buf);
+            ui_set_text(s_set_ed_value, buf);
             return;
         }
         s_time_edit.sec = 0;
@@ -707,18 +717,18 @@ static void build_files(void)
     lv_obj_align(s_files_header, LV_ALIGN_TOP_LEFT, 4, 4);
 
     lv_obj_t *up = make_button(s_files_list, &lv_font_montserrat_16);
-    lv_obj_set_size(up, 26, 30);
-    lv_obj_align(up, LV_ALIGN_TOP_RIGHT, -2, 2);
+    lv_obj_set_size(up, 32, 46);
+    lv_obj_align(up, LV_ALIGN_TOP_RIGHT, 0, 2);
     lv_obj_t *upl = make_label(up, &lv_font_montserrat_16, lv_color_black());
-    lv_label_set_text(upl, LV_SYMBOL_UP);
+    ui_set_text(upl, LV_SYMBOL_UP);
     lv_obj_center(upl);
     lv_obj_add_event_cb(up, files_up_clicked, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *down = make_button(s_files_list, &lv_font_montserrat_16);
-    lv_obj_set_size(down, 26, 30);
-    lv_obj_align(down, LV_ALIGN_BOTTOM_RIGHT, -2, -2);
+    lv_obj_set_size(down, 32, 46);
+    lv_obj_align(down, LV_ALIGN_BOTTOM_RIGHT, 0, -2);
     lv_obj_t *downl = make_label(down, &lv_font_montserrat_16, lv_color_black());
-    lv_label_set_text(downl, LV_SYMBOL_DOWN);
+    ui_set_text(downl, LV_SYMBOL_DOWN);
     lv_obj_center(downl);
     lv_obj_add_event_cb(down, files_down_clicked, LV_EVENT_CLICKED, NULL);
 
@@ -750,7 +760,7 @@ static void build_files(void)
     lv_obj_set_size(pbtn, 64, 64);
     lv_obj_align(pbtn, LV_ALIGN_CENTER, 0, 8);
     s_player_btn_txt = make_label(pbtn, &lv_font_montserrat_20, lv_color_black());
-    lv_label_set_text(s_player_btn_txt, LV_SYMBOL_PLAY);
+    ui_set_text(s_player_btn_txt, LV_SYMBOL_PLAY);
     lv_obj_center(s_player_btn_txt);
     lv_obj_add_event_cb(pbtn, player_btn_clicked, LV_EVENT_CLICKED, NULL);
 
@@ -758,7 +768,7 @@ static void build_files(void)
     lv_obj_set_size(lbtn, 60, 26);
     lv_obj_align(lbtn, LV_ALIGN_BOTTOM_MID, 0, -4);
     lv_obj_t *ll = make_label(lbtn, &lv_font_montserrat_14, lv_color_black());
-    lv_label_set_text(ll, "List");
+    ui_set_text(ll, "List");
     lv_obj_center(ll);
     lv_obj_add_event_cb(lbtn, player_list_clicked, LV_EVENT_CLICKED, NULL);
 
@@ -771,22 +781,22 @@ static void build_settings(void)
 
     s_set_list = make_container(s_page[3], 0, 0, CONTENT_W, CONTENT_H);
     lv_obj_t *title = make_label(s_set_list, &lv_font_montserrat_14, lv_color_black());
-    lv_label_set_text(title, "Settings");
+    ui_set_text(title, "Settings");
     lv_obj_align(title, LV_ALIGN_TOP_LEFT, 4, 4);
 
     lv_obj_t *up = make_button(s_set_list, &lv_font_montserrat_16);
-    lv_obj_set_size(up, 26, 30);
-    lv_obj_align(up, LV_ALIGN_TOP_RIGHT, -2, 2);
+    lv_obj_set_size(up, 32, 46);
+    lv_obj_align(up, LV_ALIGN_TOP_RIGHT, 0, 2);
     lv_obj_t *upl = make_label(up, &lv_font_montserrat_16, lv_color_black());
-    lv_label_set_text(upl, LV_SYMBOL_UP);
+    ui_set_text(upl, LV_SYMBOL_UP);
     lv_obj_center(upl);
     lv_obj_add_event_cb(up, set_up_clicked, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *down = make_button(s_set_list, &lv_font_montserrat_16);
-    lv_obj_set_size(down, 26, 30);
-    lv_obj_align(down, LV_ALIGN_BOTTOM_RIGHT, -2, -2);
+    lv_obj_set_size(down, 32, 46);
+    lv_obj_align(down, LV_ALIGN_BOTTOM_RIGHT, 0, -2);
     lv_obj_t *downl = make_label(down, &lv_font_montserrat_16, lv_color_black());
-    lv_label_set_text(downl, LV_SYMBOL_DOWN);
+    ui_set_text(downl, LV_SYMBOL_DOWN);
     lv_obj_center(downl);
     lv_obj_add_event_cb(down, set_down_clicked, LV_EVENT_CLICKED, NULL);
 
@@ -816,7 +826,7 @@ static void build_settings(void)
     lv_obj_set_size(minus, 48, 34);
     lv_obj_align(minus, LV_ALIGN_BOTTOM_LEFT, 6, -6);
     lv_obj_t *ml = make_label(minus, &lv_font_montserrat_20, lv_color_black());
-    lv_label_set_text(ml, "-");
+    ui_set_text(ml, "-");
     lv_obj_center(ml);
     lv_obj_add_event_cb(minus, editor_minus, LV_EVENT_CLICKED, NULL);
 
@@ -824,7 +834,7 @@ static void build_settings(void)
     lv_obj_set_size(ok, 56, 34);
     lv_obj_align(ok, LV_ALIGN_BOTTOM_MID, 0, -6);
     lv_obj_t *ol = make_label(ok, &lv_font_montserrat_16, lv_color_black());
-    lv_label_set_text(ol, "OK");
+    ui_set_text(ol, "OK");
     lv_obj_center(ol);
     lv_obj_add_event_cb(ok, editor_ok, LV_EVENT_CLICKED, NULL);
 
@@ -832,7 +842,7 @@ static void build_settings(void)
     lv_obj_set_size(plus, 48, 34);
     lv_obj_align(plus, LV_ALIGN_BOTTOM_RIGHT, -6, -6);
     lv_obj_t *pl = make_label(plus, &lv_font_montserrat_20, lv_color_black());
-    lv_label_set_text(pl, "+");
+    ui_set_text(pl, "+");
     lv_obj_center(pl);
     lv_obj_add_event_cb(plus, editor_plus, LV_EVENT_CLICKED, NULL);
 
@@ -850,7 +860,7 @@ static void build_bar(void)
         lv_obj_add_event_cb(slot, bar_clicked, LV_EVENT_CLICKED, NULL);
         s_slot[i] = slot;
         s_slot_txt[i] = make_label(slot, &lv_font_montserrat_20, lv_color_black());
-        lv_label_set_text(s_slot_txt[i], syms[i]);
+        ui_set_text(s_slot_txt[i], syms[i]);
         lv_obj_center(s_slot_txt[i]);
     }
 }

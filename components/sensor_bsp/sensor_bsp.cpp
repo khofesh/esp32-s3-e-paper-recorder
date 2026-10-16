@@ -81,7 +81,8 @@ bool sensor_read(float *temp_c, float *humidity)
     }
     uint16_t raw_t = ((uint16_t)d[0] << 8) | d[1];
     uint16_t raw_h = ((uint16_t)d[3] << 8) | d[4];
-    *temp_c = 175.0f * raw_t / 65536.0f - 45.0f;
+    /* Waveshare applies a 4 C self-heating correction (SHTC3_PETP_NUM). */
+    *temp_c = 175.0f * raw_t / 65536.0f - 45.0f - 4.0f;
     *humidity = 100.0f * raw_h / 65536.0f;
     return true;
 }
