@@ -84,10 +84,6 @@ void user_app_init(void)
     cfg.spi_host = EPD_SPI_NUM;
     cfg.buffer_len = 5000;
     driver = new epaper_driver_display(EPD_WIDTH, EPD_HEIGHT, cfg);
-    driver->EPD_Init();
-    driver->EPD_Clear();
-    driver->EPD_DisplayPartBaseImage();
-    driver->EPD_Init_Partial();
 
     I2cMasterBus *bus = I2cMasterBus::request_instance(ESP32_I2C_SCL_PIN, ESP32_I2C_SDA_PIN, ESP32_I2C_DEV_NUM);
     touch_init(bus, EPD_TP_RST_PIN, EPD_WIDTH, EPD_HEIGHT);
@@ -418,6 +414,8 @@ static void enter_sleep(void)
     ESP_LOGI(TAG, "Entering deep sleep");
     app_state_set_state(APP_SLEEPING);
     board_div.POWEER_Audio_OFF();
+    driver->EPD_Shutdown();
+    board_div.POWEER_EPD_OFF();
 
     esp_sleep_enable_timer_wakeup(60ULL * 1000000ULL);
     uint64_t mask = (1ULL << BOOT_BUTTON_PIN) | (1ULL << PWR_BUTTON_PIN);

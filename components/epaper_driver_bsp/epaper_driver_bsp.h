@@ -3,6 +3,8 @@
 
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 /* Display color */
 typedef enum {
@@ -30,6 +32,8 @@ private:
     spi_device_handle_t spi;
     uint8_t *buffer = NULL;
     uint8_t *old_buffer = NULL;
+    SemaphoreHandle_t mux = NULL;
+    bool partial_ready = false;
 
     void spi_gpio_init();
     void spi_port_init();
@@ -66,5 +70,9 @@ public:
     void EPD_Init_Partial();
     void EPD_DisplayPart();
     void EPD_DrawColorPixel(uint16_t x, uint16_t y,uint8_t color);
+
+    bool EPD_Changed();     /* buffer differs from what is on the panel */
+    void EPD_Sleep();       /* controller deep sleep, HV off; next partial wakes via HW reset */
+    void EPD_Shutdown();    /* wait for any refresh, sleep panel, block further refreshes */
 };
 #endif

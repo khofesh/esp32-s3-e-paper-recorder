@@ -20,6 +20,7 @@ static SemaphoreHandle_t lvgl_mux = NULL;
 #define BUFF_SIZE (EPD_WIDTH * EPD_HEIGHT * BYTES_PER_PIXEL)
 
 static uint32_t s_partial_count = 0;
+static bool s_need_full = true;
 
 static bool lvgl_lock(int timeout_ms);
 static void lvgl_unlock(void);
@@ -37,19 +38,24 @@ static void lvgl_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *co
         }
     }
 
+    if (!s_need_full && !driver->EPD_Changed()) {
+        lv_display_flush_ready(disp);
+        return;
+    }
+
     uint8_t interval = settings()->full_refresh;
     if (interval < 1) {
         interval = 10;
     }
-    s_partial_count++;
-    if (s_partial_count >= interval) {
+    if (s_need_full || ++s_partial_count >= interval) {
         s_partial_count = 0;
+        s_need_full = false;
         driver->EPD_Init();
         driver->EPD_DisplayPartBaseImage();
-        driver->EPD_Init_Partial();
     } else {
         driver->EPD_DisplayPart();
     }
+    driver->EPD_Sleep();
     lv_display_flush_ready(disp);
 }
 

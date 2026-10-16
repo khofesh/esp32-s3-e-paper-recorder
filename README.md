@@ -110,6 +110,10 @@ In-page changes and page changes use partial refresh; a full refresh runs every
 new frame (0x24) and the previous frame (0x26), which is required for the SSD1681 family
 to erase pixels correctly.
 
+To extend panel life the controller is put into deep sleep after every refresh, identical
+frames are skipped, boot uses a single full refresh, deep sleep waits for any in-flight
+refresh, and LVGL theme animations are disabled. See `docs/SPEC.md` section 9.1.
+
 ---
 
 ## Status

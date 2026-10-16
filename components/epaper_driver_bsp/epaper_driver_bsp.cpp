@@ -69,6 +69,8 @@ epaper_driver_display::epaper_driver_display(int width, int height,custom_lcd_sp
     old_buffer = (uint8_t *)heap_caps_malloc(lcd_spi_data.buffer_len, MALLOC_CAP_SPIRAM);
 	assert(old_buffer);
     memset(old_buffer, 0xff, lcd_spi_data.buffer_len);
+    mux = xSemaphoreCreateRecursiveMutex();
+    assert(mux);
 }
 
 epaper_driver_display::~epaper_driver_display() {
@@ -243,6 +245,8 @@ void epaper_driver_display::EPD_TurnOnDisplayPart() {
 }
 
 void epaper_driver_display::EPD_Init() {
+    xSemaphoreTakeRecursive(mux, portMAX_DELAY);
+    partial_ready = false;
     set_rst_1();
   	vTaskDelay(pdMS_TO_TICKS(50));
   	set_rst_0();
@@ -278,6 +282,7 @@ void epaper_driver_display::EPD_Init() {
 	read_busy();
 	
 	EPD_SetLut(WF_Full_1IN54);
+    xSemaphoreGiveRecursive(mux);
 }
 
 void epaper_driver_display::EPD_Clear() {
@@ -287,15 +292,18 @@ void epaper_driver_display::EPD_Clear() {
 
 void epaper_driver_display::EPD_Display() {
     int buffer_len = lcd_spi_data.buffer_len;
+    xSemaphoreTakeRecursive(mux, portMAX_DELAY);
     EPD_SendCommand(0x24);
     assert(buffer);
     writeBytes(buffer,buffer_len);
     EPD_TurnOnDisplay();
     memcpy(old_buffer, buffer, buffer_len);
+    xSemaphoreGiveRecursive(mux);
 }
 
 void epaper_driver_display::EPD_DisplayPartBaseImage() {
     int buffer_len = lcd_spi_data.buffer_len;
+    xSemaphoreTakeRecursive(mux, portMAX_DELAY);
     EPD_SendCommand(0x24);
     assert(buffer);
     writeBytes(buffer,buffer_len);
@@ -303,9 +311,11 @@ void epaper_driver_display::EPD_DisplayPartBaseImage() {
     writeBytes(buffer,buffer_len);
     EPD_TurnOnDisplay();
     memcpy(old_buffer, buffer, buffer_len);
+    xSemaphoreGiveRecursive(mux);
 }
 
 void epaper_driver_display::EPD_Init_Partial() {
+    xSemaphoreTakeRecursive(mux, portMAX_DELAY);
     set_rst_1();
   	vTaskDelay(pdMS_TO_TICKS(50));
   	set_rst_0();
@@ -336,10 +346,16 @@ void epaper_driver_display::EPD_Init_Partial() {
 	EPD_SendData(0xc0); 
 	EPD_SendCommand(0x20); 
 	read_busy();
+    partial_ready = true;
+    xSemaphoreGiveRecursive(mux);
 }
 
 void epaper_driver_display::EPD_DisplayPart() {
     int buffer_len = lcd_spi_data.buffer_len;
+    xSemaphoreTakeRecursive(mux, portMAX_DELAY);
+    if (!partial_ready) {
+        EPD_Init_Partial();
+    }
     EPD_SendCommand(0x24);
     assert(buffer);
     writeBytes(buffer, buffer_len);
@@ -347,6 +363,26 @@ void epaper_driver_display::EPD_DisplayPart() {
     writeBytes(old_buffer, buffer_len);
     EPD_TurnOnDisplayPart();
     memcpy(old_buffer, buffer, buffer_len);
+    xSemaphoreGiveRecursive(mux);
+}
+
+bool epaper_driver_display::EPD_Changed() {
+    return memcmp(buffer, old_buffer, lcd_spi_data.buffer_len) != 0;
+}
+
+void epaper_driver_display::EPD_Sleep() {
+    xSemaphoreTakeRecursive(mux, portMAX_DELAY);
+    // Deep sleep mode 1 keeps RAM; only a HW reset exits it, and BUSY stays high, so no read_busy()
+    EPD_SendCommand(0x10);
+    EPD_SendData(0x01);
+    partial_ready = false;
+    xSemaphoreGiveRecursive(mux);
+}
+
+void epaper_driver_display::EPD_Shutdown() {
+    xSemaphoreTakeRecursive(mux, portMAX_DELAY);
+    EPD_Sleep();
+    vTaskDelay(pdMS_TO_TICKS(100));
 }
 
 void epaper_driver_display::EPD_DrawColorPixel(uint16_t x, uint16_t y,uint8_t color) {

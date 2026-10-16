@@ -238,6 +238,18 @@ Audio and SD work is pinned away from the UI task because an e-paper refresh blo
 - E-paper retains its image with no power, so a static screen costs nothing while asleep.
 - Keep total refresh count modest. E-paper panels have limited write cycles.
 
+### 9.1 Panel lifetime rules (implemented)
+- **Sleep after every refresh.** The controller enters deep sleep mode 1 (`0x10, 0x01`) after each full or partial update, so the high-voltage circuit is never left on while idle. The next partial refresh wakes it with a HW reset (`EPD_Init_Partial`). Cost: ~120-150 ms extra latency per partial.
+- **Skip identical frames.** The flush callback compares the new frame with the frame on the panel and does not refresh when they match. Only real refreshes count toward the full-refresh interval.
+- **One full refresh at boot.** The first frame after boot is drawn with a single full refresh (no separate clear-to-white pass). Matters with auto-sleep, since every deep-sleep wake is a reboot.
+- **Never cut a refresh.** Driver refresh calls are serialized by a mutex. Before deep sleep, `EPD_Shutdown()` waits for any in-flight refresh, sleeps the panel and blocks further refreshes; then the EPD rail is switched off.
+- **No UI animation.** LVGL default-theme press grow and transitions are disabled (`sdkconfig.defaults`), so a tap does not produce extra intermediate refreshes. An existing `sdkconfig` overrides the defaults: apply via `idf.py menuconfig` or delete `sdkconfig`.
+
+### 9.2 Open lifetime items
+- Full-refresh interval is tunable 1-50; Waveshare recommends a full refresh after a few partials. Consider capping at ~20.
+- Partial LUT is fixed and not temperature compensated; panel rated 0-50 °C. Consider skipping refreshes outside that range (SHTC3 reading).
+- Before long-term storage, clear the panel to white.
+
 ---
 
 ## 10. Power
