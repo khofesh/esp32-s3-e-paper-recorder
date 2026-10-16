@@ -98,12 +98,13 @@ void user_app_init(void)
     board_div.VBAT_POWER_ON();
     board_div.POWEER_EPD_ON();
 
-    /* DFS down to 40 MHz and automatic light sleep while idle.
-     * light_sleep_enable=false keeps the USB-Serial-JTAG console connected. */
+    /* DFS only: CPU scales down to 80 MHz when idle. Light sleep stays off
+     * because the FT6336 INT is not a wake source (touch would be ignored) and
+     * 40 MHz is unsafe with octal PSRAM at 80 MHz. */
     esp_pm_config_t pm_cfg = {};
     pm_cfg.max_freq_mhz = 160;
-    pm_cfg.min_freq_mhz = 40;
-    pm_cfg.light_sleep_enable = true;
+    pm_cfg.min_freq_mhz = 80;
+    pm_cfg.light_sleep_enable = false;
     esp_err_t pm_err = esp_pm_configure(&pm_cfg);
     if (pm_err != ESP_OK) {
         ESP_LOGW(TAG, "esp_pm_configure: %s", esp_err_to_name(pm_err));
