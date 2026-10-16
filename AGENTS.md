@@ -1,8 +1,18 @@
 # agents
 
-## STM32CubeMX
+## Project
 
-- if you need to change the configuration in stm32cubemx, don't make changes in `*.ioc` file. Show step-by-step guide instead
+- Waveshare ESP32-S3-Touch-ePaper-1.54 (ESP32-S3-PICO-1-N8R8, 8 MB flash, 8 MB PSRAM): voice recorder with 200x200 1-bit e-paper UI
+- Spec: `docs/SPEC.md` — read relevant section before implementing features
+- ESP-IDF 5.5.x (`idf.py build`, `idf.py -p <port> flash monitor`), target `esp32s3`
+- LVGL 9.3 via component manager (`main/idf_component.yml`); `managed_components/` is downloaded — never edit
+- Layout:
+  - `main/` — `app_main`, LVGL port/flush (`main.cpp`), board pins & constants (`user_config.h`)
+  - `components/board_power_bsp` — EPD/audio/VBAT power rails
+  - `components/epaper_driver_bsp` — SPI e-paper driver (full/partial refresh)
+  - `components/ui_bsp` — NXP GUI Guider UI: `generated/` is tool output (don't hand-edit, lost on regeneration); put changes in `custom/`
+  - `components/user_app` — app init and glue
+- Config changes: prefer `sdkconfig.defaults`; don't hand-edit `sdkconfig` (use `idf.py menuconfig`). Partition table in `partitions.csv`
 
 ## Response Style
 
@@ -18,17 +28,19 @@
 
 ## Code Style
 
-- C (C11), STM32CubeIDE / GCC ARM toolchain, HAL drivers
-- Never write outside the `/* USER CODE BEGIN X */` ... `/* USER CODE END X */` markers in CubeMX-generated files — code outside is lost on regeneration
-- Application code goes in `Core/Src` and `Core/Inc`; reusable drivers in their own `.c`/`.h` pair
+- C++ (drivers/app, `.cpp`) and C (`ui_bsp`, `.c`); ESP-IDF + FreeRTOS APIs, GCC Xtensa toolchain
+- `app_main` is `extern "C"`; C headers included from C++ need `extern "C"` guards
+- Each component has its own `CMakeLists.txt` (`idf_component_register`); declare deps in `REQUIRES`/`PRIV_REQUIRES`
+- Pins and board constants go in `main/user_config.h`; don't hardcode GPIOs elsewhere
 - Use fixed-width types from `<stdint.h>` (`uint8_t`, `int32_t`), not `int`/`long`
-- `static` for file-local functions and variables; no globals unless shared across translation units
-- Peripheral handles (`huart1`, `hi2c1`, ...) come from CubeMX — declare with `extern` in headers, never redefine
-- Check and handle `HAL_StatusTypeDef` return values; don't ignore them
-- No dynamic allocation (`malloc`/`free`); use static buffers with explicit sizes
-- Keep ISRs short — set flags, defer work to the main loop; shared ISR variables must be `volatile`
-- No blocking `HAL_Delay()` in ISRs or long-running paths; prefer non-blocking / DMA / interrupt-driven APIs
-- Header guards via `#ifndef __FILE_H` / `#define __FILE_H`, matching CubeMX style
+- `static` for file-local functions and variables; no globals unless shared across translation units (`extern` in header)
+- Check `esp_err_t` returns (`ESP_ERROR_CHECK` at init, `ESP_RETURN_ON_ERROR` / log + handle elsewhere); don't ignore them
+- Allocate at init only; large buffers in PSRAM via `heap_caps_malloc(..., MALLOC_CAP_SPIRAM)`; no allocation in hot paths. DMA buffers need `MALLOC_CAP_DMA`
+- LVGL is not thread-safe: call `lv_*` only from the LVGL task or while holding the LVGL mutex
+- ISRs: `IRAM_ATTR`, short — set flags / notify tasks, defer work; shared ISR variables must be `volatile`
+- No busy-wait or long `vTaskDelay` in audio/record paths; e-paper refresh must not stall audio (use separate tasks/queues)
+- Logging via `ESP_LOGx` with a file-local `TAG`
+- Header guards via `#ifndef FILE_NAME_H` / `#define FILE_NAME_H`, matching existing headers
 - Minimal inline comments — only for genuinely complex logic or hardware quirks (register timing, errata)
 
 ## Context Retrieval Policy
