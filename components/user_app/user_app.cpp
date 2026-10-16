@@ -68,6 +68,7 @@ static const char *base_name(const char *path)
 
 void user_app_init(void)
 {
+    board_div.VBAT_POWER_ON();
     board_div.POWEER_EPD_ON();
     board_div.POWEER_Audio_ON();
 
