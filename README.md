@@ -52,6 +52,42 @@ Notes:
 
 ---
 
+## Troubleshooting
+
+### Flashing fails / the serial port disappears
+
+The board talks to the host over **USB-Serial/JTAG**, and that peripheral is powered
+down by deep sleep — and by automatic light sleep, even while the chip is otherwise
+idle. When it is down the port vanishes, so the flasher cannot reset the chip into
+download mode and `idf.py flash` (or the VS Code task) reports `Flash task failed`.
+
+Force the ROM download mode:
+
+1. Close any open serial monitor (it may hold the port).
+2. Hold **BOOT**, briefly unplug/replug USB (or press RST/EN), then release **BOOT**.
+   The chip re-enumerates and stays in download mode.
+3. Recheck the port number (`ls /dev/ttyACM*`) — it may have changed — then flash:
+   `idf.py -p /dev/ttyACM0 flash monitor`.
+
+During bring-up it is easiest to keep the device's **Sleep** setting **off**
+(`auto_sleep_s = 0`) and `light_sleep_enable = false` so the port stays usable.
+
+### Touch does nothing, or the screen freezes, after enabling PM
+
+Automatic light sleep sleeps the CPU while idle, and the FT6336 INT (GPIO21) is **not**
+a wake source, so touches are never serviced. Keep `light_sleep_enable = false` (DFS
+down to 80 MHz is fine) until touch wake is implemented. Do not set the DFS floor below
+80 MHz: the octal PSRAM runs at 80 MHz and needs the CPU at or above it.
+
+### Battery reads ~96–100% while plugged in
+
+The gauge reads battery terminal voltage (ADC1_CH3); with USB connected the onboard
+ETA6098 charger holds the cell at ~4.2 V, so the reading is inflated. The real level is
+the value seen after unplugging. There is no charge-enable or charge-status line to the
+MCU, so firmware cannot cap charging at 90% or reliably detect "charging".
+
+---
+
 ## Project layout
 
 | Component | Responsibility |
@@ -128,8 +164,9 @@ SHTC3 temperature/humidity, battery, SD mount, WAV record to SD, WAV playback, s
 
 Not verified (needs bench testing): microphone capture quality, e-paper refresh noise
 during recording, touch-wake from deep sleep, sustained write on low-quality cards.
-Deep sleep is implemented but **disabled by default** (`auto_sleep_s = 0`) because touch
-wake is unconfirmed.
+Auto-sleep is **on by default** (`auto_sleep_s = 30`, deep sleep with a 60 s timer wake);
+touch wake from deep sleep is unconfirmed, and both deep and light sleep drop the
+USB-Serial/JTAG console — see [Troubleshooting](#troubleshooting).
 
 ---
 
