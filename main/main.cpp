@@ -91,12 +91,14 @@ extern "C" void app_main(void)
 
     lvgl_mux = xSemaphoreCreateMutex();
     assert(lvgl_mux);
-    xTaskCreatePinnedToCore(lvgl_port_task, "LVGL", 8 * 1024, NULL, 4, NULL, 1);
 
+    /* Build the UI before the LVGL task can run ui_pages_poll() on unwired widgets. */
     if (lvgl_lock(-1)) {
         user_ui_init();
         lvgl_unlock();
     }
+
+    xTaskCreatePinnedToCore(lvgl_port_task, "LVGL", 8 * 1024, NULL, 4, NULL, 1);
 
     user_app_start();
 }

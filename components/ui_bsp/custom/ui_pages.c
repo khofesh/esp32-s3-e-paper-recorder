@@ -59,6 +59,7 @@ static lv_obj_t *s_slot_txt[4];
 static int s_page_idx;
 static uint32_t s_last_version;
 static app_state_t s_last_state;
+static bool s_ready;
 
 static const char *SYM_HOME = LV_SYMBOL_HOME;
 static const char *SYM_SET = LV_SYMBOL_SETTINGS;
@@ -928,10 +929,14 @@ void ui_pages_init(void)
     show_page(0, true);
     s_last_version = app_state_version();
     s_last_state = app_state_state();
+    s_ready = true;
 }
 
 void ui_pages_poll(void)
 {
+    if (!s_ready) {
+        return;
+    }
     app_state_t st = app_state_state();
     bool state_changed = (st != s_last_state);
 
