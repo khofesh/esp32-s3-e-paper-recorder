@@ -11,6 +11,7 @@ extern "C" {
 
 void user_app_init(void);
 void user_ui_init(void);
+void user_app_start(void);
 
 #ifdef __cplusplus
 }

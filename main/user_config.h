@@ -1,6 +1,8 @@
 #ifndef USER_CONFIG_H
 #define USER_CONFIG_H
 
+#include "driver/gpio.h"
+
 #define EPD_SPI_NUM        SPI2_HOST
 #define ESP32_I2C_DEV_NUM  I2C_NUM_0
 
@@ -15,6 +17,9 @@
 #define EPD_RST_PIN   GPIO_NUM_9
 #define EPD_BUSY_PIN  GPIO_NUM_8
 
+/*Touch (FT6336)*/
+#define EPD_TP_RST_PIN  GPIO_NUM_7
+#define EPD_TP_INT_PIN  GPIO_NUM_21
 
 /*DEV POWER init*/
 #define EPD_PWR_PIN     GPIO_NUM_6
@@ -23,6 +28,7 @@
 
 #define BOOT_BUTTON_PIN GPIO_NUM_0
 #define PWR_BUTTON_PIN  GPIO_NUM_18
+#define LED_PIN         GPIO_NUM_3
 
 /*Low-power wake-up*/
 #define ext_wakeup_pin_1 GPIO_NUM_0
@@ -31,13 +37,24 @@
 #define ESP32_I2C_SDA_PIN GPIO_NUM_47
 #define ESP32_I2C_SCL_PIN GPIO_NUM_48
 
+/*SD card (1-line SDMMC)*/
+#define SD_MISO_D0_PIN   GPIO_NUM_40
+#define SD_MOSI_CMD_PIN  GPIO_NUM_41
+#define SD_CLK_PIN       GPIO_NUM_39
+
+#define SD_MOUNT_POINT   "/sdcard"
+
+/*I2C devices*/
+#define I2C_RTC_DEV_Address        0x51
+#define I2C_SHTC3_DEV_Address      0x70
+#define I2C_FT6336_DEV_Address     0x38
+
+/*Codec board name (see components/codec_board/board_cfg.txt)*/
+#define CODEC_BOARD_NAME  "S3_ePaper_1_54"
+
 /*lvgl init*/
 #define EXAMPLE_LVGL_TICK_PERIOD_MS    5
 #define EXAMPLE_LVGL_TASK_MAX_DELAY_MS 500
 #define EXAMPLE_LVGL_TASK_MIN_DELAY_MS 100
-
-/*i2c dev*/
-#define I2C_RTC_DEV_Address        0x51
-#define I2C_SHTC3_DEV_Address      0x70           
 
 #endif // !USER_CONFIG_H
