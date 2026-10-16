@@ -35,6 +35,17 @@ esp_err_t audio_init(void)
     return ESP_OK;
 }
 
+void audio_deinit(void)
+{
+    if (!s_inited) {
+        return;
+    }
+    deinit_codec();
+    s_play = nullptr;
+    s_rec = nullptr;
+    s_inited = false;
+}
+
 esp_err_t audio_record_begin(uint32_t sample_rate, uint8_t gain)
 {
     if (!s_rec) {

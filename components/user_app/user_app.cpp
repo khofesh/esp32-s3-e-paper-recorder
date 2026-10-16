@@ -64,13 +64,27 @@ static const char *base_name(const char *path)
     return p ? p + 1 : path;
 }
 
+/* --------------------------- audio power ------------------------- */
+
+static esp_err_t audio_power_begin(void)
+{
+    board_div.POWEER_Audio_ON();
+    vTaskDelay(pdMS_TO_TICKS(20));
+    return audio_init();
+}
+
+static void audio_power_end(void)
+{
+    audio_deinit();
+    board_div.POWEER_Audio_OFF();
+}
+
 /* ----------------------------- init ----------------------------- */
 
 void user_app_init(void)
 {
     board_div.VBAT_POWER_ON();
     board_div.POWEER_EPD_ON();
-    board_div.POWEER_Audio_ON();
 
     settings_init();
     app_state_init();
@@ -93,7 +107,6 @@ void user_app_init(void)
     battery_init();
 
     esp_err_t sd = storage_init();
-    audio_init();
 
     app_snapshot_t *s = app_state_begin();
     s->rtc_ok = rtc_ok();
@@ -179,8 +192,12 @@ static void recorder_task(void *arg)
     uint8_t *buf = (uint8_t *)heap_caps_malloc(REC_CHUNK, MALLOC_CAP_SPIRAM);
     if (!buf) {
         app_state_set_status("No memory");
+    } else if (audio_power_begin() != ESP_OK) {
+        app_state_set_status("Mic error");
+        free(buf);
     } else if (audio_record_begin(s_rec_rate, settings()->mic_gain) != ESP_OK) {
         app_state_set_status("Mic error");
+        audio_power_end();
         free(buf);
     } else {
         uint32_t since_flush = 0;
@@ -212,6 +229,7 @@ static void recorder_task(void *arg)
             }
         }
         audio_record_end();
+        audio_power_end();
         free(buf);
     }
 
@@ -288,7 +306,14 @@ static void player_task(void *arg)
         storage_unlock();
         if (!s_play_file) {
             free(buf);
+        } else if (audio_power_begin() != ESP_OK) {
+            storage_lock();
+            fclose(s_play_file);
+            storage_unlock();
+            s_play_file = nullptr;
+            free(buf);
         } else if (audio_play_begin(s_play_rate, s_play_ch, settings()->volume) != ESP_OK) {
+            audio_power_end();
             storage_lock();
             fclose(s_play_file);
             storage_unlock();
@@ -311,6 +336,7 @@ static void player_task(void *arg)
                 remaining -= rd;
             }
             audio_play_end();
+            audio_power_end();
             storage_lock();
             fclose(s_play_file);
             storage_unlock();
@@ -414,6 +440,7 @@ static void enter_sleep(void)
 {
     ESP_LOGI(TAG, "Entering deep sleep");
     app_state_set_state(APP_SLEEPING);
+    audio_deinit();
     board_div.POWEER_Audio_OFF();
     driver->EPD_Shutdown();
     board_div.POWEER_EPD_OFF();

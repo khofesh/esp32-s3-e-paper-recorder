@@ -10,6 +10,7 @@ extern "C" {
 #endif
 
 esp_err_t audio_init(void);
+void audio_deinit(void);
 
 esp_err_t audio_record_begin(uint32_t sample_rate, uint8_t gain);
 esp_err_t audio_record_read(uint8_t *buf, size_t bytes);

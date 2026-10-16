@@ -22,7 +22,7 @@ static void settings_defaults(void)
     s_cfg.sample_rate = 16000;
     s_cfg.mic_gain = 45;
     s_cfg.volume = 80;
-    s_cfg.auto_sleep_s = 0;
+    s_cfg.auto_sleep_s = 30;
 }
 
 void settings_init(void)
