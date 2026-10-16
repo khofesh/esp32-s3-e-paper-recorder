@@ -2,6 +2,10 @@ build/
 sdkconfig
 sdkconfig.old
 
+.env
+
+managed_components/
+
 #############################################
 # Custom - Add your project specific ignores
 #############################################
