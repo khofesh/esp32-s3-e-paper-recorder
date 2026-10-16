@@ -41,6 +41,60 @@ Things that are *not* realistic on this panel: live timers ticking every second,
 
 Check the V2 label: Waveshare says examples are not interchangeable between V1 and V2. The touch version has only one hardware revision, but confirm what is printed on your board.
 
+### 2.1 Verified on hardware (this unit)
+
+Read off the board over USB-Serial/JTAG with `esptool flash_id`, `espefuse summary` and an `idf.py monitor` boot capture.
+
+| Item | Reported |
+|---|---|
+| Chip | ESP32-S3-PICO-1 (LGA56), revision v0.2, eFuse block rev v1.3 |
+| Cores | dual-core LX7 + LP core, rated 240 MHz (app runs at 160 MHz) |
+| Package | LGA56 (`PKG_VERSION` = 1) |
+| Crystal | 40 MHz |
+| Flash | 8 MB GigaDevice (GD), quad / 4 data lines, 3.3 V — `FLASH_CAP` 8M |
+| PSRAM | 8 MB AP Memory (AP_3v3), **octal (OPI)**, 80 MHz, 64 Mbit — `PSRAM_CAP` 8M |
+| VDD_SPI | forced 3.3 V (`VDD_SPI_FORCE` + `VDD_SPI_TIEH`) |
+| MAC | 70:04:1d:d7:ef:9c |
+| Security | flash encryption off, secure boot off, USB-Serial/JTAG and download mode enabled |
+| Onboard I2C | SHTC3 responds (`ID:0887`) |
+
+Runtime confirms both memories: `esp_psram: Found 8MB PSRAM device` (octal, 80 MHz, `SPI SRAM memory test OK`), `spi_flash: detected chip: gd`, `flash io: qio`, `SPI Mode: QIO @ 80 MHz`.
+
+The stock firmware on the unit was built for 4 MB and warns at boot: `Detected size(8192k) larger than the size in the binary image header(4096k)`. Build for **8 MB** (see 2.2).
+
+### 2.2 Memory budget
+
+Board memory (ESP32-S3-PICO-1-N8R8), from the Waveshare/Espressif figures:
+
+| Memory | Size | Notes |
+|---|---|---|
+| SRAM (internal) | 512 KB | Static app regions are DIRAM + IRAM below; the rest is ROM, I-cache (16 KB) and D-cache (32 KB) |
+| RTC SRAM | 16 KB | 8 KB RTC SLOW + 8 KB RTC FAST, retained in deep sleep |
+| ROM | 384 KB | Espressif ROM, not writable by the app |
+| Flash (in-package) | 8 MB | App lives in the `factory` partition, 0x3F0000 (3.94 MiB) |
+| PSRAM (in-package) | 8 MB | Octal (OPI) at 80 MHz; not reported by `idf.py size` |
+
+Current firmware, measured with `idf.py size` (ESP-IDF v6.1, target `esp32s3`), bytes:
+
+| Region | Used | Total | Free | Sections |
+|---|---|---|---|---|
+| Flash Code | 354,462 | — | — | `.text` |
+| Flash Data | 312,300 | — | — | `.rodata` 312,028, `.appdesc` 256, `.tdata` 16 |
+| DIRAM | 136,734 (40.0%) | 341,760 | 205,026 | `.bss` 69,312, `.text` 52,339, `.data` 15,083 |
+| IRAM | 16,384 (100%) | 16,384 | 0 | `.text` 15,356, `.vectors` 1,028 |
+| RTC SLOW | 36 (0.4%) | 8,192 | 8,156 | `.force_slow` |
+| RTC FAST | 24 (0.3%) | 8,192 | 8,168 | `.rtc_reserved` |
+| Image | 750,604 | — | — | `.bin`, pads larger |
+
+How to read it:
+
+- **DIRAM** is the shared D/IRAM region (0x3FC88000 to 0x3FCDB700). It holds RAM data (`.data`, `.bss`) and IRAM code that overflows the dedicated IRAM window. ~200 KB is free for static allocation; the remaining internal SRAM is the runtime heap.
+- **IRAM** here is only the 16 KB non-shared window (0x40374000 to 0x40378000) and it is 100% full. The vectors plus current IRAM-resident code fill it, so any new `IRAM_ATTR` code (audio/touch ISRs, section 6) lands in DIRAM `.text` and consumes the ~200 KB above.
+- **Flash Code / Data** are the flash-mapped instruction and constant windows, not physical flash. The real budget is the `factory` app partition: 0x3F0000 = 4,128,768 B, of which the 750,604 B image uses 18%, leaving 3,378,164 B (82%).
+- **PSRAM** is where the spec puts the large buffers (LVGL full frame buffer ~80 KB, audio ring buffer ~64 KB; sections 6 and 7). It is fixed at 8 MB at runtime and is not reported by the size tool.
+
+Flash size: originally built for 4 MB (`CONFIG_ESPTOOLPY_FLASHSIZE_4MB`); corrected to **8 MB** to match `FLASH_CAP` (2.1). The `factory` app partition is 0x3F0000 (4 MB), so the upper 4 MB of flash is currently unallocated.
+
 ---
 
 ## 3. Software stack
