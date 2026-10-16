@@ -16,6 +16,7 @@ idf_component_register(
   settings
   esp_driver_gpio
   esp_hw_support
+  esp_pm
   esp_timer
   heap
   INCLUDE_DIRS ".")

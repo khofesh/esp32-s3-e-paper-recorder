@@ -64,9 +64,11 @@ static void lvgl_flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *co
     lv_display_flush_ready(disp);
 }
 
-static void increase_lvgl_tick(void *arg)
+/* Derive the LVGL tick from wall time instead of a periodic timer, so no 5 ms
+ * interrupt keeps the CPU out of idle/light sleep. */
+static uint32_t lvgl_tick_get(void)
 {
-    lv_tick_inc(EXAMPLE_LVGL_TICK_PERIOD_MS);
+    return (uint32_t)(esp_timer_get_time() / 1000);
 }
 
 extern "C" void app_main(void)
@@ -82,12 +84,7 @@ extern "C" void app_main(void)
     assert(buffer_1);
     lv_display_set_buffers(disp, buffer_1, NULL, BUFF_SIZE, LV_DISPLAY_RENDER_MODE_FULL);
 
-    esp_timer_create_args_t tick_args = {};
-    tick_args.callback = &increase_lvgl_tick;
-    tick_args.name = "lvgl_tick";
-    esp_timer_handle_t tick_timer = NULL;
-    ESP_ERROR_CHECK(esp_timer_create(&tick_args, &tick_timer));
-    ESP_ERROR_CHECK(esp_timer_start_periodic(tick_timer, EXAMPLE_LVGL_TICK_PERIOD_MS * 1000));
+    lv_tick_set_cb(lvgl_tick_get);
 
     lvgl_mux = xSemaphoreCreateMutex();
     assert(lvgl_mux);

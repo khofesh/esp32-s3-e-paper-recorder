@@ -19,6 +19,7 @@
 #include "driver/rtc_io.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_pm.h"
 #include "esp_sleep.h"
 #include "esp_timer.h"
 
@@ -30,6 +31,7 @@ static const char *TAG = "user_app";
 
 epaper_driver_display *driver = nullptr;
 static board_power_bsp_t board_div(EPD_PWR_PIN, Audio_PWR_PIN, VBAT_PWR_PIN);
+static esp_pm_lock_handle_t s_audio_pm = nullptr;
 
 #define REC_CHUNK 8192
 #define PLAY_CHUNK 4096
@@ -68,15 +70,25 @@ static const char *base_name(const char *path)
 
 static esp_err_t audio_power_begin(void)
 {
+    if (s_audio_pm) {
+        esp_pm_lock_acquire(s_audio_pm);
+    }
     board_div.POWEER_Audio_ON();
     vTaskDelay(pdMS_TO_TICKS(20));
-    return audio_init();
+    esp_err_t err = audio_init();
+    if (err != ESP_OK && s_audio_pm) {
+        esp_pm_lock_release(s_audio_pm);
+    }
+    return err;
 }
 
 static void audio_power_end(void)
 {
     audio_deinit();
     board_div.POWEER_Audio_OFF();
+    if (s_audio_pm) {
+        esp_pm_lock_release(s_audio_pm);
+    }
 }
 
 /* ----------------------------- init ----------------------------- */
@@ -85,6 +97,24 @@ void user_app_init(void)
 {
     board_div.VBAT_POWER_ON();
     board_div.POWEER_EPD_ON();
+
+    /* DFS down to 40 MHz and automatic light sleep while idle.
+     * light_sleep_enable=false keeps the USB-Serial-JTAG console connected. */
+    esp_pm_config_t pm_cfg = {};
+    pm_cfg.max_freq_mhz = 160;
+    pm_cfg.min_freq_mhz = 40;
+    pm_cfg.light_sleep_enable = true;
+    esp_err_t pm_err = esp_pm_configure(&pm_cfg);
+    if (pm_err != ESP_OK) {
+        ESP_LOGW(TAG, "esp_pm_configure: %s", esp_err_to_name(pm_err));
+    }
+
+    /* Keep light sleep off while the I2S codec is streaming. */
+    pm_err = esp_pm_lock_create(ESP_PM_NO_LIGHT_SLEEP, 0, "audio", &s_audio_pm);
+    if (pm_err != ESP_OK) {
+        ESP_LOGW(TAG, "audio pm lock: %s", esp_err_to_name(pm_err));
+        s_audio_pm = nullptr;
+    }
 
     settings_init();
     app_state_init();
@@ -452,6 +482,10 @@ static void enter_sleep(void)
     rtc_gpio_pullup_en(PWR_BUTTON_PIN);
     rtc_gpio_pulldown_dis(PWR_BUTTON_PIN);
     esp_sleep_enable_ext1_wakeup(mask, ESP_EXT1_WAKEUP_ANY_LOW);
+
+    /* Keep the battery latch (GPIO17) asserted through deep sleep. */
+    rtc_gpio_hold_en((gpio_num_t)VBAT_PWR_PIN);
+
     esp_deep_sleep_start();
 }
 
